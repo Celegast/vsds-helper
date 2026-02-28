@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# Screenshots captured at runtime
+screenshots/
+
+# Debug output images and text
+debug/
+
+# Output data (CSV scans, calibration model)
+output/
+
+# All raw screenshots
+*.png
+*.jpg
