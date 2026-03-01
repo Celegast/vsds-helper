@@ -213,7 +213,7 @@ def main():
                     raw = ''
                 if raw:
                     try:
-                        scan_row[key] = cast(raw)
+                        scan_row[key] = cast(raw.replace(',', '.'))
                     except ValueError:
                         print(f"      (invalid — keeping {disp})")
 
