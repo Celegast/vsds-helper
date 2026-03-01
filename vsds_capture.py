@@ -77,6 +77,8 @@ def _init_paste_tsv(path: str):
 
 def _write_paste_blocks(f, scans: list):
     """Write (or overwrite) the four paste blocks for all scans so far."""
+    ordered = sorted(scans, key=lambda s: s['y'])   # ascending galactic height
+    scans = ordered
     f.write('=== 1. Paste into: System (col A) ===\n')
     f.write('System\n')
     for s in scans:
