@@ -277,7 +277,8 @@ class NavPanelOCR:
     # Common OCR character confusions in amber-background (BINARY_INV) crops.
     # Digit-like letters that Tesseract confuses with digits when reading
     # dark text on a bright amber background.
-    _DIST_CHAR_SUB = str.maketrans('SOoIlgBs', '50011989')
+    # '8' → '0': ED uses slashed zeros (Ø-style) that Tesseract reads as 8.
+    _DIST_CHAR_SUB = str.maketrans('SOoIlgBs8', '500119890')
 
     def read_max_distance(self, deskewed: np.ndarray,
                           debug_prefix: str = None) -> float | None:
