@@ -98,6 +98,18 @@ def _beep_done():
         print('\a')
 
 
+def _beep_confirm():
+    """Three short descending tones: scan done, action required."""
+    try:
+        winsound.Beep(1200, 120)
+        time.sleep(0.04)
+        winsound.Beep(1000, 120)
+        time.sleep(0.04)
+        winsound.Beep(800, 180)
+    except Exception:
+        print('\a')
+
+
 def _beep_err():
     try:
         winsound.Beep(400, 400)
@@ -199,6 +211,7 @@ def main():
                 print(f"  Names   : {', '.join(sample)}{more}")
 
             # 5. Confirm / correct key values before saving
+            _beep_confirm()
             print()
             print("  [?] Confirm — press Enter to accept, or type a correction:")
             for key, label, cast in [
