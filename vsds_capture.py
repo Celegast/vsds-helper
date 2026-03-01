@@ -205,6 +205,25 @@ def main():
                   f"{s['total_count']:>6}  {md:>8}  {s['star_system']}")
         print()
         print(f"  Full results : {scan_path}")
+
+        # ── Excel paste block ──────────────────────────────────────────────
+        # Tab-separated, column order matches the VSDS spreadsheet.
+        # Paste into Excel starting at the System column; predefined columns
+        # (Z Sample, Corrected n, Rho) are left blank so they keep their
+        # existing formulas.
+        #
+        # Coordinate mapping:  spreadsheet X = ED x
+        #                      spreadsheet Z = ED y  (galactic height)
+        #                      spreadsheet Y = ED z
+        print()
+        print("  ── Excel paste (select all, Ctrl-C, paste into spreadsheet) ──")
+        print()
+        EXCEL_HEADER = "System\tZ Sample\tSystem Count\tCorrected n\tMax Distance\tRho\tX\tZ\tY"
+        print(EXCEL_HEADER)
+        for s in scans:
+            md = s['max_distance_ly'] if s['max_distance_ly'] else ''
+            print(f"{s['star_system']}\t\t{s['total_count']}\t\t{md}\t\t{s['x']}\t{s['y']}\t{s['z']}")
+
     print("\n  o7  Fly safe, Commander.")
 
 
