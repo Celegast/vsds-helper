@@ -403,6 +403,8 @@ class NavPanelOCR:
         # DirectInput games like Elite Dangerous (pyautogui's VK-code
         # approach is ignored by DirectInput).
 
+        WRAP_TOL = 50    # pixels: hl_top must be within this of hl_top_init
+
         # ── Initial screenshot + full OCR ─────────────────────────────────
         initial_path = self.take_screenshot()
         panel_bgr    = self.crop_nav_panel(initial_path)
@@ -431,20 +433,18 @@ class NavPanelOCR:
 
         # ── Phase 1: move selection to bottom of visible window ───────────
         # visible_count − 1 presses: no wrap is possible in this range.
-        phase1_presses = visible_count - 1
-        for _ in range(phase1_presses):
+        for _ in range(visible_count - 1):
             pydirectinput.press(config.SCROLL_KEY)
             time.sleep(config.SCROLL_PRESS_DELAY)
 
         time.sleep(config.SCROLL_SETTLE_DELAY)
-        p1_path      = self.take_screenshot()
+        p1_path       = self.take_screenshot()
         prev_deskewed = self.deskew(self.crop_nav_panel(p1_path))
 
         # ── Phase 2: scroll one entry at a time, detect wrap ─────────────
-        presses  = phase1_presses
-        WRAP_TOL = 50    # pixels: hl_top must be within this of hl_top_init
+        presses = visible_count - 1
 
-        while presses < 500:   # 500-entry safety cap
+        while presses < 55:    # hard cap: nav panel shows at most 49 systems
             pydirectinput.press(config.SCROLL_KEY)
             presses += 1
             time.sleep(config.SCROLL_PRESS_DELAY + config.SCROLL_SETTLE_DELAY)

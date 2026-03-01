@@ -20,8 +20,8 @@ QUIT_HOTKEY    = 'esc'
 # ─── Auto-scroll ───────────────────────────────────────────────────────────────
 # F9 auto-scrolls the nav panel using keypresses to count all entries.
 SCROLL_KEY          = 's'    # key that moves the selection down one entry
-SCROLL_PRESS_DELAY  = 0.03   # seconds between consecutive key presses
-SCROLL_SETTLE_DELAY = 0.10   # seconds to wait after a press before screenshotting
+SCROLL_PRESS_DELAY  = 0.02   # seconds between consecutive key presses
+SCROLL_SETTLE_DELAY = 0.07   # seconds to wait after a press before screenshotting
 
 # ─── Screen resolution ────────────────────────────────────────────────────────
 
