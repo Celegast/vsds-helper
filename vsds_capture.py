@@ -171,8 +171,21 @@ def main():
     print(f"  Ready — press {config.CAPTURE_HOTKEY.upper()} ...")
     print("=" * 70)
 
-    os.makedirs(config.OUTPUT_DIR, exist_ok=True)
-    os.makedirs(config.DEBUG_DIR, exist_ok=True)
+    os.makedirs(config.OUTPUT_DIR,    exist_ok=True)
+    os.makedirs(config.DEBUG_DIR,     exist_ok=True)
+    os.makedirs(config.SCREENSHOTS_DIR, exist_ok=True)
+
+    # Clear screenshots from previous sessions.
+    cleared = 0
+    for fname in os.listdir(config.SCREENSHOTS_DIR):
+        fpath = os.path.join(config.SCREENSHOTS_DIR, fname)
+        if os.path.isfile(fpath):
+            os.remove(fpath)
+            cleared += 1
+    if cleared:
+        print(f"  Cleared {cleared} screenshot(s) from previous session.")
+        print()
+
     scan_path   = os.path.join(config.OUTPUT_DIR, config.OUTPUT_FILE)
     paste_path  = os.path.join(config.OUTPUT_DIR, PASTE_FILE)
     sample_path = config.SCROLLBAR_SAMPLES_FILE
