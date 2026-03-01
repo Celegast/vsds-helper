@@ -156,7 +156,7 @@ def cmd_analyse():
         predicted = A * b_sum + B
         residuals = totals - predicted
         rmse = float(np.sqrt(np.mean(residuals**2)))
-        print(f"Linear fit: total ≈ {A:.6f} * bright_sum + {B:.2f}")
+        print(f"Linear fit: total ~= {A:.6f} * bright_sum + {B:.2f}")
         print(f"RMSE: {rmse:.2f}")
         print()
         print("Predictions vs truth:")

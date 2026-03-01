@@ -14,8 +14,14 @@ SCROLLBAR_SAMPLES_FILE = "output/scrollbar_samples.csv"
 
 # ─── Hotkeys ──────────────────────────────────────────────────────────────────
 
-CAPTURE_HOTKEY = 'f9'
-QUIT_HOTKEY = 'esc'
+CAPTURE_HOTKEY = 'f9'    # triggers the full automated scan
+QUIT_HOTKEY    = 'esc'
+
+# ─── Auto-scroll ───────────────────────────────────────────────────────────────
+# F9 auto-scrolls the nav panel using keypresses to count all entries.
+SCROLL_KEY          = 's'    # key that moves the selection down one entry
+SCROLL_PRESS_DELAY  = 0.03   # seconds between consecutive key presses
+SCROLL_SETTLE_DELAY = 0.10   # seconds to wait after a press before screenshotting
 
 # ─── Screen resolution ────────────────────────────────────────────────────────
 
@@ -59,10 +65,10 @@ SCROLLBAR_COL_RIGHT = 1022   # 10 px wide strip
 SCROLLBAR_ROW_TOP    = 64    # first row with any scrollbar signal
 SCROLLBAR_ROW_BOTTOM = 354   # last row with any scrollbar signal
 #
-# NOTE: The scrollbar uses a GRADIENT rather than a discrete thumb/track.
-# The calibration formula (brightness profile → total count) is NOT yet
-# established — it requires multiple sample captures with known counts.
-# Use SCROLLBAR_SAMPLES_FILE to accumulate those samples.
+# NOTE: The scrollbar is a decorative position indicator only.
+# Empirical analysis (18 samples) shows no reliable correlation between
+# any brightness metric and total system count.  Total count is obtained
+# instead by auto-scrolling the list with keypresses (see SCROLL_KEY).
 
 # ─── List area — coordinates relative to the DESKEWED panel crop ──────────────
 # This is the region containing the system-name entries, used for OCR.
@@ -72,17 +78,18 @@ LIST_RIGHT  = 800    # stop before distance numbers (e.g. "7.61Ly") start
 LIST_TOP    = 0      # entries begin at the very top of the crop
 LIST_BOTTOM = 540    # last visible entry bottom; below this is cockpit frame
 
+# Distance column — used when reading the highlighted entry's distance label
+# (e.g. '13.6Ly' from a bottom-scrolled _end screenshot)
+DIST_COL_LEFT  = 820   # distance numbers start here
+DIST_COL_RIGHT = 990   # right edge of the distance field
+
 # ─── Highlighted (selected) entry detection ───────────────────────────────────
-# When an entry is selected it has a bright amber background (inverted colours).
-# OCR misses it because the background colour is inconsistent with the dark rows.
-# We detect it separately by checking average brightness of the top rows.
-HIGHLIGHT_CHECK_ROWS  = 80    # how many rows from the top to check
-HIGHLIGHT_CHECK_LEFT  = 70    # x start (inside the list, past the icon)
-HIGHLIGHT_CHECK_RIGHT = 600   # x end (well within the name column)
-# Use the ROW-MEAN MAX: find the brightest single row's average brightness.
-# The selected entry has an amber background; its row mean is ~100-150.
-# Non-highlighted rows are dark (row mean < 40).
-HIGHLIGHT_THRESHOLD   = 80    # max row-mean above this → highlighted entry present
+# The selected entry has a bright amber background (dark text on bright bg).
+# OCR misses it, so it is detected by scanning row means across the full list.
+# Amber highlight rows have means ~120-150; normal dark-entry rows peak at ~40-50.
+HIGHLIGHT_CHECK_LEFT  = 70    # x start for the row-mean scan (past the icon)
+HIGHLIGHT_CHECK_RIGHT = 600   # x end for the row-mean scan
+HIGHLIGHT_THRESHOLD   = 90    # row mean above this → part of the highlighted entry
 
 # ─── OCR ──────────────────────────────────────────────────────────────────────
 
