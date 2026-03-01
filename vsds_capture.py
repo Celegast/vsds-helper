@@ -35,8 +35,12 @@ from nav_panel_ocr import NavPanelOCR
 # Coordinate mapping:  spreadsheet X = ED x
 #                      spreadsheet Z = ED y  (galactic height)
 #                      spreadsheet Y = ED z
-PASTE_FILE   = 'vsds_paste.tsv'
-PASTE_HEADER = 'System\tZ Sample\tSystem Count\tCorrected n\tMax Distance\tRho\tX\tZ\tY'
+# Paste file — four separate blocks, one per group of adjacent non-formula columns.
+# Spreadsheet layout:
+#   System | Z Sample* | System Count | Corrected n* | Max Distance | Rho* | X | Z | Y
+#   (* = formula column — never overwrite)
+# Each block has its own header so pasting into the correct column is self-evident.
+PASTE_FILE = 'vsds_paste.tsv'
 
 # ─── CSV helpers ──────────────────────────────────────────────────────────────
 
@@ -68,16 +72,40 @@ def _append_csv(path: str, header: list, row: dict):
 
 def _init_paste_tsv(path: str):
     if not os.path.exists(path):
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(PASTE_HEADER + '\n')
+        open(path, 'w').close()   # create empty file
 
 
-def _append_paste_tsv(path: str, scan_row: dict):
-    md = scan_row['max_distance_ly'] if scan_row['max_distance_ly'] != '' else ''
-    line = (f"{scan_row['star_system']}\t\t{scan_row['total_count']}\t\t"
-            f"{md}\t\t{scan_row['x']}\t{scan_row['y']}\t{scan_row['z']}\n")
-    with open(path, 'a', encoding='utf-8') as f:
-        f.write(line)
+def _write_paste_blocks(f, scans: list):
+    """Write (or overwrite) the four paste blocks for all scans so far."""
+    f.write('=== 1. Paste into: System (col A) ===\n')
+    f.write('System\n')
+    for s in scans:
+        f.write(f"{s['star_system']}\n")
+    f.write('\n')
+
+    f.write('=== 2. Paste into: System Count (col C) ===\n')
+    f.write('System Count\n')
+    for s in scans:
+        f.write(f"{s['total_count']}\n")
+    f.write('\n')
+
+    f.write('=== 3. Paste into: Max Distance (col E) ===\n')
+    f.write('Max Distance\n')
+    for s in scans:
+        md = s['max_distance_ly'] if s['max_distance_ly'] != '' else ''
+        f.write(f"{md}\n")
+    f.write('\n')
+
+    f.write('=== 4. Paste into: X (col G) — fills X, Z, Y ===\n')
+    f.write('X\tZ\tY\n')
+    for s in scans:
+        f.write(f"{s['x']}\t{s['y']}\t{s['z']}\n")
+
+
+def _rewrite_paste_tsv(path: str, scans: list):
+    """Rewrite the entire paste file from the current scans list."""
+    with open(path, 'w', encoding='utf-8') as f:
+        _write_paste_blocks(f, scans)
 
 
 # ─── Audio ────────────────────────────────────────────────────────────────────
@@ -232,7 +260,8 @@ def main():
 
             # 6. Write to disk after confirmation
             _append_csv(scan_path, SCAN_HEADER, scan_row)
-            _append_paste_tsv(paste_path, scan_row)
+            scans.append(scan_row)
+            _rewrite_paste_tsv(paste_path, scans)
 
             # 7. Scrollbar sample (true_total now confirmed)
             sample_row = {
@@ -247,7 +276,6 @@ def main():
             }
             _append_csv(sample_path, SAMPLE_HEADER, sample_row)
 
-            scans.append(scan_row)
             print(f"  [OK] Scan #{idx} saved.")
             _beep_done()
 
