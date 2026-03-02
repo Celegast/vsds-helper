@@ -45,6 +45,27 @@ class NavPanelOCR:
         os.makedirs(config.SCREENSHOTS_DIR, exist_ok=True)
         os.makedirs(config.DEBUG_DIR, exist_ok=True)
 
+        # Detect screen resolution and scale all panel-internal pixel coordinates.
+        # config.py stores them at the reference height (1440 px); multiply by _s
+        # so every method works correctly on any resolution.
+        import pyautogui
+        self.screen_w, self.screen_h = pyautogui.size()
+        _s = self.screen_h / config.EXPECTED_SCREEN_HEIGHT
+
+        self.list_left             = int(config.LIST_LEFT             * _s)
+        self.list_right            = int(config.LIST_RIGHT            * _s)
+        self.list_top              = int(config.LIST_TOP              * _s)
+        self.list_bottom           = int(config.LIST_BOTTOM           * _s)
+        self.dist_col_left         = int(config.DIST_COL_LEFT         * _s)
+        self.dist_col_right        = int(config.DIST_COL_RIGHT        * _s)
+        self.highlight_check_left  = int(config.HIGHLIGHT_CHECK_LEFT  * _s)
+        self.highlight_check_right = int(config.HIGHLIGHT_CHECK_RIGHT * _s)
+        self.scrollbar_col_left    = int(config.SCROLLBAR_COL_LEFT    * _s)
+        self.scrollbar_col_right   = int(config.SCROLLBAR_COL_RIGHT   * _s)
+        self.scrollbar_row_top     = int(config.SCROLLBAR_ROW_TOP     * _s)
+        self.scrollbar_row_bottom  = int(config.SCROLLBAR_ROW_BOTTOM  * _s)
+        self._wrap_tol             = int(50                           * _s)
+
     # ── Screenshot ────────────────────────────────────────────────────────────
 
     def take_screenshot(self, filename: str = None) -> str:
@@ -103,8 +124,8 @@ class NavPanelOCR:
         If not found, returns (False, 0, 0).
         """
         region = deskewed[
-            config.LIST_TOP : config.LIST_BOTTOM,
-            config.HIGHLIGHT_CHECK_LEFT : config.HIGHLIGHT_CHECK_RIGHT,
+            self.list_top : self.list_bottom,
+            self.highlight_check_left : self.highlight_check_right,
         ]
         gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
         row_means = np.mean(gray, axis=1)
@@ -128,8 +149,8 @@ class NavPanelOCR:
             else:
                 break   # first gap → end of the highlight entry
 
-        row_top    = config.LIST_TOP + run_start
-        row_bottom = config.LIST_TOP + run_end + 1
+        row_top    = self.list_top + run_start
+        row_bottom = self.list_top + run_end + 1
         return True, row_top, row_bottom
 
     @staticmethod
@@ -172,8 +193,8 @@ class NavPanelOCR:
         # reliably invisible to Tesseract under normal binary thresholding, so
         # all dark entries (above and below the highlight) are captured correctly.
         list_crop = deskewed[
-            config.LIST_TOP : config.LIST_BOTTOM,
-            config.LIST_LEFT : config.LIST_RIGHT,
+            self.list_top : self.list_bottom,
+            self.list_left : self.list_right,
         ]
         binary = self._preprocess_for_ocr(list_crop)
         pil = Image.fromarray(binary)
@@ -195,7 +216,7 @@ class NavPanelOCR:
         # the highlighted row has dark text on bright amber background — the inverse
         # of all other rows — so we invert the threshold to make its text readable.
         if found_hl:
-            hl_crop = deskewed[hl_top:hl_bottom, config.LIST_LEFT:config.LIST_RIGHT]
+            hl_crop = deskewed[hl_top:hl_bottom, self.list_left:self.list_right]
             h, w = hl_crop.shape[:2]
             up = cv2.resize(hl_crop,
                             (w * config.OCR_UPSCALE_FACTOR,
@@ -237,24 +258,24 @@ class NavPanelOCR:
             peak_val    - brightness at the peak
         """
         sb = deskewed[
-            config.SCROLLBAR_ROW_TOP:config.SCROLLBAR_ROW_BOTTOM,
-            config.SCROLLBAR_COL_LEFT:config.SCROLLBAR_COL_RIGHT,
+            self.scrollbar_row_top:self.scrollbar_row_bottom,
+            self.scrollbar_col_left:self.scrollbar_col_right,
         ]
         gray = cv2.cvtColor(sb, cv2.COLOR_BGR2GRAY)
         row_mean = np.mean(gray, axis=1)   # one value per row
 
-        profile = [(config.SCROLLBAR_ROW_TOP + i, float(v))
+        profile = [(self.scrollbar_row_top + i, float(v))
                    for i, v in enumerate(row_mean)]
 
         # Find rows with any meaningful signal
         sig_rows = [r for r, v in profile if v > 5.0]
-        track_start = sig_rows[0] if sig_rows else config.SCROLLBAR_ROW_TOP
-        track_end   = sig_rows[-1] if sig_rows else config.SCROLLBAR_ROW_BOTTOM
+        track_start = sig_rows[0] if sig_rows else self.scrollbar_row_top
+        track_end   = sig_rows[-1] if sig_rows else self.scrollbar_row_bottom
 
         bright_sum = float(np.sum(row_mean))
         peak_idx   = int(np.argmax(row_mean))
         peak_val   = float(row_mean[peak_idx])
-        peak_row   = config.SCROLLBAR_ROW_TOP + peak_idx
+        peak_row   = self.scrollbar_row_top + peak_idx
 
         if config.SAVE_DEBUG_IMAGES and debug_prefix:
             # Save the raw scrollbar strip enlarged for inspection
@@ -302,7 +323,7 @@ class NavPanelOCR:
         # Use a lower binarisation threshold (60) than the normal OCR path (80)
         # because the amber background sits at ~130 gray and the dark text at ~30-60.
         # Threshold 60 keeps only the darkest (most reliable) ink pixels.
-        dist_crop = deskewed[hl_top:hl_bottom, config.DIST_COL_LEFT:config.DIST_COL_RIGHT]
+        dist_crop = deskewed[hl_top:hl_bottom, self.dist_col_left:self.dist_col_right]
         h, w = dist_crop.shape[:2]
         up = cv2.resize(dist_crop, (w * config.OCR_UPSCALE_FACTOR,
                                     h * config.OCR_UPSCALE_FACTOR),
@@ -352,7 +373,7 @@ class NavPanelOCR:
         found, hl_top, hl_bottom = self._find_highlighted_entry(deskewed)
         last_name = None
         if found:
-            hl_crop = deskewed[hl_top:hl_bottom, config.LIST_LEFT:config.LIST_RIGHT]
+            hl_crop = deskewed[hl_top:hl_bottom, self.list_left:self.list_right]
             h, w = hl_crop.shape[:2]
             up = cv2.resize(hl_crop, (w * config.OCR_UPSCALE_FACTOR,
                                       h * config.OCR_UPSCALE_FACTOR),
@@ -404,7 +425,7 @@ class NavPanelOCR:
         # DirectInput games like Elite Dangerous (pyautogui's VK-code
         # approach is ignored by DirectInput).
 
-        WRAP_TOL = 50    # pixels: hl_top must be within this of hl_top_init
+        WRAP_TOL = self._wrap_tol   # pixels: hl_top must be within this of hl_top_init
 
         # ── Initial screenshot + full OCR ─────────────────────────────────
         initial_path = self.take_screenshot()

@@ -196,6 +196,9 @@ def main():
     _init_paste_tsv(paste_path)
 
     ocr        = NavPanelOCR()
+    print(f"  Screen  : {ocr.screen_w}×{ocr.screen_h}"
+          f"  (scale {ocr.screen_h / config.EXPECTED_SCREEN_HEIGHT:.3f}×)")
+    print()
     scans      = []
     idx        = 0
     _scan_lock = threading.Lock()   # prevents F9 re-entry during confirmation
