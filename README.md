@@ -2,6 +2,23 @@
 
 A Python tool for automating **Vertical Stellar Density Scans (VSDS)** in Elite Dangerous.
 
+## Disclaimer
+
+This tool occupies a **grey area** in the Elite Dangerous
+[End User Licence Agreement](https://www.frontierstore.net/ed-eula/).
+
+| Component | Status |
+|-----------|--------|
+| Reading ED journal files | **Fine** — Frontier designed the journal system specifically for third-party tools (EDMC, Inara, EDSM all do the same) |
+| Screenshot + OCR | **Fine** — passive screen reading, no different from overlay tools |
+| Simulated keypresses (`s` to scroll the nav panel) | **Grey area** — the EULA prohibits "automation software"; Frontier has never actioned against benign, non-competitive tools of this type, and it is functionally equivalent to a VoiceAttack macro |
+
+The tool provides **no competitive advantage** — it navigates a UI list and counts entries for citizen-science data collection.  Frontier has historically embraced the VSDS research programme.  That said, **you use this tool at your own discretion and risk.**
+
+> **General disclaimer:** This software is provided "as is", without warranty of any kind, express or implied.  The author accepts no responsibility or liability for any damage, data loss, account action, or other harm arising from its use.  By using this tool you agree that you do so entirely at your own risk.
+
+---
+
 ## What is a VSDS?
 
 A VSDS is a citizen-science technique where commanders fly to progressively
