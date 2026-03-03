@@ -144,26 +144,31 @@ Paste each block separately into the corresponding column.  Formula columns
 | `total_count` | Exact total systems in the list (confirmed by user) |
 | `system_names` | Pipe-separated OCR'd names from the initial visible window |
 | `max_distance_ly` | Distance to the furthest system in ly (confirmed by user) |
-| `sb_bright_sum` | Scrollbar brightness sum (diagnostic) |
-| `sb_peak_val` | Scrollbar peak row brightness (diagnostic) |
-| `sb_peak_row` | Row of peak brightness in the scrollbar (diagnostic) |
+| `sb_bright_sum` | Number of orange scrollbar rows × 100 (diagnostic) |
+| `sb_peak_val` | 100.0 if scrollbar thumb detected, 0.0 if absent (diagnostic) |
+| `sb_peak_row` | Absolute row of detected scrollbar thumb top (diagnostic) |
 
 ## How it works
 
 ### Auto-scroll algorithm
 
-F9 triggers a five-step sequence:
+F9 triggers a sequence:
 
-1. **Initial screenshot** — OCR the visible window (up to 11 entries), record scrollbar state
-2. **Phase 1** — send `visible_count − 1` keypresses (`s`) to move the selection
-   from entry 1 to entry 11 (no wrap possible yet); take one screenshot
-3. **Phase 2** — press `s` once, screenshot, check where the highlighted entry is.
-   When it jumps back to the top of the window the list has wrapped → **total = press count**
-4. The frame immediately before the wrap has the last entry highlighted → read **max distance** from it
-5. **Confirmation prompt** — review and optionally correct `total_count` and `max_distance_ly`
+1. **Initial screenshot** — OCR the visible window (up to 11 entries); measure scrollbar thumb
+   to estimate total count for the bulk skip
+2. **Phase 1** — send `visible_count − 1` keypresses (`s`); no wrap possible in this range;
+   take one screenshot (entry `visible_count` selected)
+3. **Bulk phase** — skip most remaining entries without screenshots using the scrollbar
+   geometry estimate (`thumb_h / track_h ≈ visible_count / total_count`); stops
+   `BULK_SAFETY` (8) entries before the estimated end
+4. **Phase 2** — press `s` once per step, screenshot, check where the highlighted entry is.
+   When it returns to the top of the window the list has wrapped → **total = press count**
+5. The frame immediately before the wrap has the last entry highlighted → read **max distance** from it
+6. **Confirmation prompt** — review and optionally correct `total_count` and `max_distance_ly`
    before anything is written to disk
 
-For a 49-entry list with 11 visible, Phase 2 takes ~38 screenshots (~4 seconds).
+For a 49-entry list with 11 visible, the bulk phase skips ~30 keypresses without screenshots,
+leaving only the final ~8 entries for wrap detection (~1-2 seconds total).
 
 ### Audio cues
 
@@ -179,7 +184,10 @@ For a 49-entry list with 11 visible, Phase 2 takes ~38 screenshots (~4 seconds).
 ```
 Full screenshot (5120×1440)
   └─ Crop nav panel  [2006, 545] → [3036, 1148]  (raw px)
-       └─ Deskew  (rotate –6.034° to correct cockpit tilt)
+       ├─ Rotate –2° (SCROLLBAR_TILT_DEGREES)
+       │    └─ Crop scrollbar strip [992–1006, 34–494]
+       │         └─ HSV orange detection → thumb height → bulk estimate
+       └─ Deskew  (rotate –4.5° to correct cockpit tilt)
             ├─ Detect highlighted entry  (amber background → row mean > 90)
             │    ├─ OCR with THRESH_BINARY_INV (dark text on amber bg)
             │    └─ Read distance column [820–990]  (max distance)
@@ -201,9 +209,16 @@ Reads `FSDJump`, `Location`, and `CarrierJump` events from the latest
 
 ### Note on the scrollbar
 
-The nav panel scrollbar is a decorative position indicator.  Empirical analysis
-of 18 samples showed no reliable correlation between its brightness profile and
-total system count.  The auto-scroll keypress method is used instead.
+The nav panel scrollbar thumb is detected by HSV orange/amber colour segmentation
+(H 10–30, S > 60, V > 80) on a –2°-rotated crop of the raw panel.  The thumb's
+height relative to the track gives a geometry estimate
+(`thumb_h / track_h ≈ visible_count / total_count`) used to skip most of the
+list in the bulk phase.
+
+The scrollbar provides only a rough estimate — the exact total is always
+determined by keypresses (one press per entry, wrap back to entry 1 signals the end).
+Earlier brightness-based analysis (18 samples) showed no reliable correlation
+with total count; that approach has been replaced by colour segmentation.
 
 ## Project structure
 
@@ -237,7 +252,8 @@ Edit `config.py` to change:
 | `SCROLL_SETTLE_DELAY` | `0.07` | Seconds to wait after a press before screenshotting |
 | `TESSERACT_PATH` | `None` | Set if Tesseract is not in PATH |
 | `SAVE_DEBUG_IMAGES` | `True` | Save cropped/preprocessed images to `debug/` |
-| `NAV_PANEL_TILT_DEGREES` | `-6.034` | Deskew angle (cockpit tilt) |
+| `NAV_PANEL_TILT_DEGREES` | `-4.5` | Deskew angle applied to panel crop for OCR |
+| `SCROLLBAR_TILT_DEGREES` | `-2.0` | Separate rotation applied to raw panel before scrollbar measurement |
 
 ## Tips
 

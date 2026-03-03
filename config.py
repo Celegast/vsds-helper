@@ -51,19 +51,23 @@ NAV_PANEL_BOTTOM = 1148
 # ─── Deskew ───────────────────────────────────────────────────────────────────
 # The nav panel is physically tilted in the cockpit view.
 # Measured via Hough line detection on the panel crop.
-NAV_PANEL_TILT_DEGREES = -6.034   # rotate crop by this angle to correct
+NAV_PANEL_TILT_DEGREES    = -4.5   # rotate crop by this angle to correct panel text
+SCROLLBAR_TILT_DEGREES  = -2.0   # separate lighter rotation applied to raw panel
+                                  # before cropping the scrollbar strip for measurement
 
-# ─── Scrollbar — coordinates relative to the DESKEWED panel crop ──────────────
-# Measured from the deskewed panel (1030 × 603 px at reference resolution).
-# The scrollbar is a fading-gradient indicator on the right edge of the list.
+# ─── Scrollbar — coordinates in the SCROLLBAR_TILT_DEGREES (-2°) rotated panel ─
+# Measured from the raw panel rotated by SCROLLBAR_TILT_DEGREES (-2°).
+# At -2° the scrollbar track is nearly vertical — measured directly in that space.
 #
-# Column range (x within deskewed crop):
-SCROLLBAR_COL_LEFT  = 1012
-SCROLLBAR_COL_RIGHT = 1022   # 10 px wide strip
+# Column range (x within -2°-rotated crop):
+#   Full track rectangle observed at x=992–1006 (includes dark background)
+SCROLLBAR_COL_LEFT  = 992
+SCROLLBAR_COL_RIGHT = 1006
 #
-# Row range where the scrollbar can appear (y within deskewed crop):
-SCROLLBAR_ROW_TOP    = 64    # first row with any scrollbar signal
-SCROLLBAR_ROW_BOTTOM = 354   # last row with any scrollbar signal
+# Row range (y within -2°-rotated crop):
+#   Full track rectangle observed at y=34–494
+SCROLLBAR_ROW_TOP    = 34
+SCROLLBAR_ROW_BOTTOM = 494
 #
 # NOTE: The scrollbar is a decorative position indicator only.
 # Empirical analysis (18 samples) shows no reliable correlation between

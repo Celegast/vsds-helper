@@ -65,6 +65,7 @@ class NavPanelOCR:
         self.scrollbar_row_top     = int(config.SCROLLBAR_ROW_TOP     * _s)
         self.scrollbar_row_bottom  = int(config.SCROLLBAR_ROW_BOTTOM  * _s)
         self._wrap_tol             = int(50                           * _s)
+        self._scrollbar_tilt       = config.SCROLLBAR_TILT_DEGREES
 
     # ── Screenshot ────────────────────────────────────────────────────────────
 
@@ -75,6 +76,42 @@ class NavPanelOCR:
         path = os.path.join(config.SCREENSHOTS_DIR, filename)
         pyautogui.screenshot().save(path)
         return path
+
+    def _capture_panel(self, save_scrollbar_strip: bool = False) -> tuple:
+        """
+        Take a full screenshot, crop to the nav panel, deskew, then overwrite
+        the saved file with the small deskewed panel crop (much easier to inspect
+        than the full 5120×1440 image).  The raw (pre-deskew) crop is also saved
+        as '<name>_raw.png'.
+
+        If save_scrollbar_strip is True, also saves a 20× widened extract of
+        the scrollbar measurement region (taken from the RAW panel, where the
+        scrollbar is nearly vertical) as '<name>_sb.png'.
+
+        Returns (deskewed, panel_bgr) — both as BGR numpy arrays.
+        """
+        path      = self.take_screenshot()
+        panel_bgr = self.crop_nav_panel(path)
+        deskewed  = self.deskew(panel_bgr)
+        # Save raw panel (before deskew) as _raw.png — scrollbar is vertical here.
+        cv2.imwrite(path.replace('.png', '_raw.png'), panel_bgr)
+        cv2.imwrite(path, deskewed)          # replace full screenshot with deskewed crop
+        if save_scrollbar_strip:
+            # Apply the same scrollbar-specific rotation used in measure_scrollbar,
+            # then extract the strip — so _sb.png matches exactly what's measured.
+            h, w = panel_bgr.shape[:2]
+            M = cv2.getRotationMatrix2D((w / 2, h / 2), self._scrollbar_tilt, 1.0)
+            panel_rot = cv2.warpAffine(panel_bgr, M, (w, h), borderValue=(0, 0, 0))
+            # Save the full rotated panel so the scrollbar region can be verified.
+            cv2.imwrite(path.replace('.png', '_sbpanel.png'), panel_rot)
+            sb = panel_rot[
+                self.scrollbar_row_top:self.scrollbar_row_bottom,
+                self.scrollbar_col_left:self.scrollbar_col_right,
+            ]
+            # sb_big = cv2.resize(sb, (sb.shape[1] * 20, sb.shape[0]),
+            #                     interpolation=cv2.INTER_NEAREST)
+            cv2.imwrite(path.replace('.png', '_sb.png'), sb) # , sb_big)
+        return deskewed, panel_bgr
 
     # ── Step 1: crop panel ────────────────────────────────────────────────────
 
@@ -240,57 +277,113 @@ class NavPanelOCR:
 
     # ── Step 4: scrollbar measurement ────────────────────────────────────────
 
-    def measure_scrollbar(self, deskewed: np.ndarray,
+    def measure_scrollbar(self, panel_raw: np.ndarray,
                           debug_prefix: str = None) -> dict:
         """
-        Sample the scrollbar column and return its brightness profile.
+        Detect the scrollbar thumb by HSV orange-colour detection.
 
-        The raw profile is stored in scrollbar_samples.csv alongside the
-        capture metadata.  A calibration script (scrollbar_calibrate.py)
-        will later fit a formula once enough samples with known counts exist.
+        Applies SCROLLBAR_TILT_DEGREES rotation to the raw panel, then finds
+        orange/amber pixels within the configured column/row strip.
 
         Returns a dict with:
-            profile     - list of (row, mean_brightness) within the track window
-            track_start - first row with any signal
-            track_end   - last row with any signal
-            bright_sum  - sum of all brightness values (a simple 1-D descriptor)
-            peak_row    - row with maximum brightness
-            peak_val    - brightness at the peak
+            thumb_h     - height of the detected orange thumb (px); 0 if not found
+            track_h     - total track height (px)
+            peak_val    - 100.0 if thumb detected, 0.0 if not
+                          (< 10 → short list / no scrollbar; used in scan_with_scroll)
+            peak_row    - absolute row of thumb top
+            track_start - absolute row of thumb top
+            track_end   - absolute row of thumb bottom
+            bright_sum  - len(orange_rows) * 100  (kept for CSV compatibility)
+            profile     - [(row, 100.0|0.0), ...]  (kept for CSV compatibility)
         """
-        sb = deskewed[
+        h, w = panel_raw.shape[:2]
+        M = cv2.getRotationMatrix2D((w / 2, h / 2), self._scrollbar_tilt, 1.0)
+        panel_rot = cv2.warpAffine(panel_raw, M, (w, h), borderValue=(0, 0, 0))
+
+        strip = panel_rot[
             self.scrollbar_row_top:self.scrollbar_row_bottom,
             self.scrollbar_col_left:self.scrollbar_col_right,
         ]
-        gray = cv2.cvtColor(sb, cv2.COLOR_BGR2GRAY)
-        row_mean = np.mean(gray, axis=1)   # one value per row
 
-        profile = [(self.scrollbar_row_top + i, float(v))
-                   for i, v in enumerate(row_mean)]
+        # Detect the orange/amber thumb by hue.
+        # OpenCV HSV: H 0-179 (×2 = standard degrees), S/V 0-255.
+        # ED's scrollbar amber: roughly H 10-30, S > 60, V > 80.
+        hsv  = cv2.cvtColor(strip, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv,
+                           np.array([10,  60,  80]),
+                           np.array([30, 255, 255]))
 
-        # Find rows with any meaningful signal
-        sig_rows = [r for r, v in profile if v > 5.0]
-        track_start = sig_rows[0] if sig_rows else self.scrollbar_row_top
-        track_end   = sig_rows[-1] if sig_rows else self.scrollbar_row_bottom
+        # Count orange pixels per row across the strip width.
+        row_orange_count = (mask > 0).sum(axis=1)
 
-        bright_sum = float(np.sum(row_mean))
-        peak_idx   = int(np.argmax(row_mean))
-        peak_val   = float(row_mean[peak_idx])
-        peak_row   = self.scrollbar_row_top + peak_idx
+        # Any orange in a row → scrollbar present (used for short-list detection).
+        row_has_orange = row_orange_count > 0
+        orange_idx     = np.where(row_has_orange)[0]
+
+        # Thick-thumb rows: must have at least half the strip width orange.
+        # The thick thumb fills ~8 of 14 columns; the thin indicator line fills
+        # only 1–2 columns.  This threshold separates them cleanly.
+        strip_w        = strip.shape[1]
+        thick_min      = max(3, strip_w // 2)
+        row_is_thick   = row_orange_count >= thick_min
+        thick_idx      = np.where(row_is_thick)[0]
+
+        track_h = self.scrollbar_row_bottom - self.scrollbar_row_top
+
+        # First contiguous run of thick rows = the thumb.
+        first_top = first_bot = first_len = 0
+        if len(thick_idx) >= 1:
+            run_start = run_end = int(thick_idx[0])
+            for idx in thick_idx[1:]:
+                if int(idx) == run_end + 1:
+                    run_end = int(idx)
+                else:
+                    break
+            first_top = run_start
+            first_bot = run_end
+            first_len = run_end - run_start
+
+        if first_len >= 2:
+            thumb_top_rel = first_top
+            thumb_bot_rel = first_bot
+            thumb_h  = first_len
+            peak_val = 100.0
+        elif len(orange_idx) > 0:
+            # Scrollbar present but thumb too thin to measure — treat as no signal.
+            thumb_top_rel = thumb_bot_rel = 0
+            thumb_h  = 0
+            peak_val = 100.0   # still a scrollbar, just can't estimate count
+        else:
+            thumb_top_rel = thumb_bot_rel = 0
+            thumb_h  = 0
+            peak_val = 0.0
+
+        abs_top = self.scrollbar_row_top + thumb_top_rel
+        abs_bot = self.scrollbar_row_top + thumb_bot_rel
+
+        row_vals = np.where(row_has_orange, 100.0, 0.0)
+        profile  = [(self.scrollbar_row_top + i, float(row_vals[i]))
+                    for i in range(len(row_vals))]
 
         if config.SAVE_DEBUG_IMAGES and debug_prefix:
-            # Save the raw scrollbar strip enlarged for inspection
-            strip_big = cv2.resize(sb, (sb.shape[1] * 10, sb.shape[0]),
+            strip_big = cv2.resize(strip, (strip.shape[1] * 10, strip.shape[0]),
                                    interpolation=cv2.INTER_NEAREST)
-            cv2.imwrite(os.path.join(config.DEBUG_DIR, f"{debug_prefix}_scrollbar.png"),
-                        strip_big)
+            cv2.imwrite(os.path.join(config.DEBUG_DIR,
+                                     f"{debug_prefix}_scrollbar.png"), strip_big)
+            mask_big = cv2.resize(mask, (mask.shape[1] * 10, mask.shape[0]),
+                                  interpolation=cv2.INTER_NEAREST)
+            cv2.imwrite(os.path.join(config.DEBUG_DIR,
+                                     f"{debug_prefix}_scrollbar_mask.png"), mask_big)
 
         return {
-            'profile':     profile,
-            'track_start': track_start,
-            'track_end':   track_end,
-            'bright_sum':  bright_sum,
-            'peak_row':    peak_row,
+            'thumb_h':     thumb_h,
+            'track_h':     track_h,
             'peak_val':    peak_val,
+            'peak_row':    abs_top,
+            'track_start': abs_top,
+            'track_end':   abs_bot,
+            'bright_sum':  float(len(orange_idx) * 100),
+            'profile':     profile,
         }
 
     # ── Max-distance from _end screenshot ────────────────────────────────────
@@ -336,7 +429,9 @@ class NavPanelOCR:
             Image.fromarray(binary).save(
                 os.path.join(config.DEBUG_DIR, f"{debug_prefix}_dist_bin.png"))
 
-        raw = pytesseract.image_to_string(Image.fromarray(binary), config='--oem 3 --psm 7')
+        raw = pytesseract.image_to_string(
+            Image.fromarray(binary),
+            config='--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789.,')
 
         # Normalise OCR noise:
         #   1. commas OCR'd in place of periods → comma+period → single period
@@ -428,28 +523,41 @@ class NavPanelOCR:
         WRAP_TOL = self._wrap_tol   # pixels: hl_top must be within this of hl_top_init
 
         # ── Initial screenshot + full OCR ─────────────────────────────────
-        initial_path = self.take_screenshot()
-        panel_bgr    = self.crop_nav_panel(initial_path)
-        deskewed     = self.deskew(panel_bgr)
-
-        if config.SAVE_DEBUG_IMAGES and debug_prefix:
-            cv2.imwrite(os.path.join(config.DEBUG_DIR,
-                                     f"{debug_prefix}_init_deskewed.png"), deskewed)
+        # Saves panel crop + scrollbar strip to screenshots/ for easy inspection.
+        # panel_bgr is the RAW (pre-deskew) crop — used for scrollbar measurement
+        # because the scrollbar is nearly vertical there (diagonal after deskew).
+        deskewed, panel_bgr = self._capture_panel(save_scrollbar_strip=True)
 
         visible_count, system_names = self.count_visible_entries(
             deskewed, debug_prefix and f"{debug_prefix}_init")
         scrollbar = self.measure_scrollbar(
-            deskewed, debug_prefix and f"{debug_prefix}_init")
+            panel_bgr, debug_prefix and f"{debug_prefix}_init")
         found_hl, hl_top_init, _ = self._find_highlighted_entry(deskewed)
+
+        print(f"  Scrollbar init: peak={scrollbar['peak_val']:.0f}"
+              f"  thumb_h={scrollbar['thumb_h']}  track_h={scrollbar['track_h']}"
+              f"  found_hl={found_hl}  visible_count={visible_count}")
 
         # ── Short list: everything fits on screen (no scrollbar signal) ───
         # peak_val < 10 means the scrollbar gradient is effectively absent.
         if not found_hl or scrollbar['peak_val'] < 10:
+            # Entry 1 is selected in the initial screenshot; the max-distance
+            # entry is the LAST one.  Navigate there before reading.
+            if visible_count > 1:
+                for _ in range(visible_count - 1):
+                    pydirectinput.press(config.SCROLL_KEY)
+                    time.sleep(config.SCROLL_PRESS_DELAY)
+                time.sleep(config.SCROLL_SETTLE_DELAY)
+                end_deskewed, _ = self._capture_panel()
+                max_dist = self.read_max_distance(
+                    end_deskewed, debug_prefix and f"{debug_prefix}_end")
+            else:
+                max_dist = self.read_max_distance(deskewed)
             return {
                 'visible_count':   visible_count,
                 'total_count':     visible_count,
                 'system_names':    system_names,
-                'max_distance_ly': self.read_max_distance(deskewed),
+                'max_distance_ly': max_dist,
                 'scrollbar':       scrollbar,
             }
 
@@ -460,19 +568,40 @@ class NavPanelOCR:
             time.sleep(config.SCROLL_PRESS_DELAY)
 
         time.sleep(config.SCROLL_SETTLE_DELAY)
-        p1_path       = self.take_screenshot()
-        prev_deskewed = self.deskew(self.crop_nav_panel(p1_path))
+        prev_deskewed, _ = self._capture_panel()
+
+        # ── Bulk phase: jump most of the remaining distance without screenshots ──
+        # Geometrically: thumb_h / track_h ≈ visible_count / total_count.
+        # Leave BULK_SAFETY entries before the end for one-at-a-time wrap detection.
+        BULK_SAFETY  = 8
+        bulk_presses = 0
+        est_total    = visible_count   # fallback if thumb not detected
+
+        thumb_h = scrollbar['thumb_h']
+        track_h = scrollbar['track_h']
+        if thumb_h > 5 and track_h > 0:
+            est_total    = round(visible_count * track_h / thumb_h)
+            est_total    = max(visible_count, min(55, est_total))
+            bulk_presses = max(0, est_total - visible_count - BULK_SAFETY)
+
+        print(f"  Scrollbar bulk: thumb_h={thumb_h}  track_h={track_h}"
+              f"  → est_total={est_total}  bulk={bulk_presses}")
+        if bulk_presses > 0:
+            for _ in range(bulk_presses):
+                pydirectinput.press(config.SCROLL_KEY)
+                time.sleep(config.SCROLL_PRESS_DELAY)
+            time.sleep(config.SCROLL_SETTLE_DELAY)
+            prev_deskewed, _ = self._capture_panel()
 
         # ── Phase 2: scroll one entry at a time, detect wrap ─────────────
-        presses = visible_count - 1
+        presses = visible_count - 1 + bulk_presses
 
         while presses < 55:    # hard cap: nav panel shows at most 49 systems
             pydirectinput.press(config.SCROLL_KEY)
             presses += 1
             time.sleep(config.SCROLL_PRESS_DELAY + config.SCROLL_SETTLE_DELAY)
 
-            path          = self.take_screenshot()
-            curr_deskewed = self.deskew(self.crop_nav_panel(path))
+            curr_deskewed, _ = self._capture_panel()
             found, hl_top, _ = self._find_highlighted_entry(curr_deskewed)
 
             if found and abs(hl_top - hl_top_init) < WRAP_TOL:
