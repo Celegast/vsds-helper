@@ -616,6 +616,11 @@ class NavPanelOCR:
             prev_deskewed,
             debug_prefix and f"{debug_prefix}_end")
 
+        # Navigate back to the last entry so it is visible in ED during
+        # the confirmation prompt.  One UP press from entry 1 wraps to entry N.
+        pydirectinput.press(config.SCROLL_KEY_UP)
+        time.sleep(config.SCROLL_SETTLE_DELAY)
+
         return {
             'visible_count':   visible_count,
             'total_count':     total_count,
