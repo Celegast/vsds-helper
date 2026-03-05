@@ -64,7 +64,7 @@ class NavPanelOCR:
         self.scrollbar_col_right   = int(config.SCROLLBAR_COL_RIGHT   * _s)
         self.scrollbar_row_top     = int(config.SCROLLBAR_ROW_TOP     * _s)
         self.scrollbar_row_bottom  = int(config.SCROLLBAR_ROW_BOTTOM  * _s)
-        self._wrap_tol             = int(50                           * _s)
+        self._wrap_tol             = int(15                           * _s)
         self._scrollbar_tilt       = config.SCROLLBAR_TILT_DEGREES
 
     # ── Screenshot ────────────────────────────────────────────────────────────
@@ -541,21 +541,31 @@ class NavPanelOCR:
         # ── Short list: everything fits on screen (no scrollbar signal) ───
         # peak_val < 10 means the scrollbar gradient is effectively absent.
         if not found_hl or scrollbar['peak_val'] < 10:
-            # Entry 1 is selected in the initial screenshot; the max-distance
-            # entry is the LAST one.  Navigate there before reading.
-            if visible_count > 1:
-                for _ in range(visible_count - 1):
-                    pydirectinput.press(config.SCROLL_KEY)
-                    time.sleep(config.SCROLL_PRESS_DELAY)
-                time.sleep(config.SCROLL_SETTLE_DELAY)
-                end_deskewed, _ = self._capture_panel()
-                max_dist = self.read_max_distance(
-                    end_deskewed, debug_prefix and f"{debug_prefix}_end")
+            # Navigate one step at a time so an early wrap (caused by OCR
+            # over-counting visible_count) is caught and total_count is
+            # measured correctly rather than assumed equal to visible_count.
+            total_count = visible_count   # default if no early wrap
+            max_dist    = None
+            prev_end    = deskewed
+            for i in range(visible_count - 1):
+                pydirectinput.press(config.SCROLL_KEY)
+                time.sleep(config.SCROLL_PRESS_DELAY + config.SCROLL_SETTLE_DELAY)
+                curr_end, _ = self._capture_panel()
+                found_end, hl_end, _ = self._find_highlighted_entry(curr_end)
+                if found_end and abs(hl_end - hl_top_init) < WRAP_TOL:
+                    # Early wrap: true total = presses done so far.
+                    total_count = i + 1
+                    max_dist = self.read_max_distance(
+                        prev_end, debug_prefix and f"{debug_prefix}_end")
+                    break
+                prev_end = curr_end
             else:
-                max_dist = self.read_max_distance(deskewed)
+                # No early wrap: prev_end is the last entry.
+                max_dist = self.read_max_distance(
+                    prev_end, debug_prefix and f"{debug_prefix}_end")
             return {
                 'visible_count':   visible_count,
-                'total_count':     visible_count,
+                'total_count':     total_count,
                 'system_names':    system_names,
                 'max_distance_ly': max_dist,
                 'scrollbar':       scrollbar,
