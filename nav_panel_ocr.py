@@ -219,18 +219,20 @@ class NavPanelOCR:
                               debug_prefix: str = None) -> tuple[int, list[str]]:
         """
         Count and read all visible nav-panel entries:
-          1. Detect the highlighted (selected) top entry via brightness
-          2. OCR the remaining dark-background rows
-          3. Clean up OCR output and combine
+          1. Detect the highlighted (selected) entry via brightness
+          2. OCR dark-background rows below the highlight (avoids amber noise)
+          3. OCR the highlighted row separately with THRESH_BINARY_INV
+          4. Combine and clean
         Returns (count, [name, ...]).
         """
         found_hl, hl_top, hl_bottom = self._find_highlighted_entry(deskewed)
 
-        # OCR the full list area.  The amber-background highlighted row is
-        # reliably invisible to Tesseract under normal binary thresholding, so
-        # all dark entries (above and below the highlight) are captured correctly.
+        # OCR the dark-background entries only.  Start below the highlighted
+        # row (if found) so its amber background doesn't produce garbled text
+        # that slips through _clean_names and inflates the count.
+        ocr_top = hl_bottom if found_hl else self.list_top
         list_crop = deskewed[
-            self.list_top : self.list_bottom,
+            ocr_top : self.list_bottom,
             self.list_left : self.list_right,
         ]
         binary = self._preprocess_for_ocr(list_crop)
@@ -540,32 +542,18 @@ class NavPanelOCR:
 
         # ── Short list: everything fits on screen (no scrollbar signal) ───
         # peak_val < 10 means the scrollbar gradient is effectively absent.
+        # total_count = visible_count from OCR.  Jump straight to entry N
+        # by pressing UP once from entry 1 — the list wraps to the last
+        # entry regardless of how many entries there are.
         if not found_hl or scrollbar['peak_val'] < 10:
-            # Navigate one step at a time so an early wrap (caused by OCR
-            # over-counting visible_count) is caught and total_count is
-            # measured correctly rather than assumed equal to visible_count.
-            total_count = visible_count   # default if no early wrap
-            max_dist    = None
-            prev_end    = deskewed
-            for i in range(visible_count - 1):
-                pydirectinput.press(config.SCROLL_KEY)
-                time.sleep(config.SCROLL_PRESS_DELAY + config.SCROLL_SETTLE_DELAY)
-                curr_end, _ = self._capture_panel()
-                found_end, hl_end, _ = self._find_highlighted_entry(curr_end)
-                if found_end and abs(hl_end - hl_top_init) < WRAP_TOL:
-                    # Early wrap: true total = presses done so far.
-                    total_count = i + 1
-                    max_dist = self.read_max_distance(
-                        prev_end, debug_prefix and f"{debug_prefix}_end")
-                    break
-                prev_end = curr_end
-            else:
-                # No early wrap: prev_end is the last entry.
-                max_dist = self.read_max_distance(
-                    prev_end, debug_prefix and f"{debug_prefix}_end")
+            pydirectinput.press(config.SCROLL_KEY_UP)
+            time.sleep(config.SCROLL_SETTLE_DELAY)
+            end_deskewed, _ = self._capture_panel()
+            max_dist = self.read_max_distance(
+                end_deskewed, debug_prefix and f"{debug_prefix}_end")
             return {
                 'visible_count':   visible_count,
-                'total_count':     total_count,
+                'total_count':     visible_count,
                 'system_names':    system_names,
                 'max_distance_ly': max_dist,
                 'scrollbar':       scrollbar,
