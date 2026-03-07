@@ -84,7 +84,7 @@ class NavPanelOCR:
         than the full 5120×1440 image).  The raw (pre-deskew) crop is also saved
         as '<name>_raw.png'.
 
-        If save_scrollbar_strip is True, also saves a 20× widened extract of
+        If save_scrollbar_strip is True, also saves an extract of
         the scrollbar measurement region (taken from the RAW panel, where the
         scrollbar is nearly vertical) as '<name>_sb.png'.
 
@@ -108,9 +108,7 @@ class NavPanelOCR:
                 self.scrollbar_row_top:self.scrollbar_row_bottom,
                 self.scrollbar_col_left:self.scrollbar_col_right,
             ]
-            # sb_big = cv2.resize(sb, (sb.shape[1] * 20, sb.shape[0]),
-            #                     interpolation=cv2.INTER_NEAREST)
-            cv2.imwrite(path.replace('.png', '_sb.png'), sb) # , sb_big)
+            cv2.imwrite(path.replace('.png', '_sb.png'), sb)
         return deskewed, panel_bgr
 
     # ── Step 1: crop panel ────────────────────────────────────────────────────
@@ -368,14 +366,10 @@ class NavPanelOCR:
                     for i in range(len(row_vals))]
 
         if config.SAVE_DEBUG_IMAGES and debug_prefix:
-            strip_big = cv2.resize(strip, (strip.shape[1] * 10, strip.shape[0]),
-                                   interpolation=cv2.INTER_NEAREST)
             cv2.imwrite(os.path.join(config.DEBUG_DIR,
-                                     f"{debug_prefix}_scrollbar.png"), strip_big)
-            mask_big = cv2.resize(mask, (mask.shape[1] * 10, mask.shape[0]),
-                                  interpolation=cv2.INTER_NEAREST)
+                                     f"{debug_prefix}_scrollbar.png"), strip)
             cv2.imwrite(os.path.join(config.DEBUG_DIR,
-                                     f"{debug_prefix}_scrollbar_mask.png"), mask_big)
+                                     f"{debug_prefix}_scrollbar_mask.png"), mask)
 
         return {
             'thumb_h':     thumb_h,

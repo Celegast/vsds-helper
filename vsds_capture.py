@@ -80,26 +80,22 @@ def _write_paste_blocks(f, scans: list):
     ordered = sorted(scans, key=lambda s: s['y'])   # ascending galactic height
     scans = ordered
     f.write('=== 1. Paste into: System (col A) ===\n')
-    f.write('System\n')
     for s in scans:
         f.write(f"{s['star_system']}\n")
     f.write('\n')
 
     f.write('=== 2. Paste into: System Count (col C) ===\n')
-    f.write('System Count\n')
     for s in scans:
         f.write(f"{s['total_count']}\n")
     f.write('\n')
 
     f.write('=== 3. Paste into: Max Distance (col E) ===\n')
-    f.write('Max Distance\n')
     for s in scans:
         md = s['max_distance_ly'] if s['max_distance_ly'] != '' else ''
         f.write(f"{md}\n")
     f.write('\n')
 
     f.write('=== 4. Paste into: X (col G) — fills X, Z, Y ===\n')
-    f.write('X\tZ\tY\n')
     for s in scans:
         f.write(f"{s['x']}\t{s['y']}\t{s['z']}\n")
 
