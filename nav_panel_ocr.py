@@ -412,7 +412,9 @@ class NavPanelOCR:
         # Use a lower binarisation threshold (60) than the normal OCR path (80)
         # because the amber background sits at ~130 gray and the dark text at ~30-60.
         # Threshold 60 keeps only the darkest (most reliable) ink pixels.
-        dist_crop = deskewed[hl_top:hl_bottom, self.dist_col_left:self.dist_col_right]
+        pad = int(4 * (self.screen_h / config.EXPECTED_SCREEN_HEIGHT))
+        crop_top = max(0, hl_top - pad)
+        dist_crop = deskewed[crop_top:hl_bottom, self.dist_col_left:self.dist_col_right]
         h, w = dist_crop.shape[:2]
         up = cv2.resize(dist_crop, (w * config.OCR_UPSCALE_FACTOR,
                                     h * config.OCR_UPSCALE_FACTOR),
