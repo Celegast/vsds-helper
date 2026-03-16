@@ -387,8 +387,9 @@ class NavPanelOCR:
     # Common OCR character confusions in amber-background (BINARY_INV) crops.
     # Digit-like letters that Tesseract confuses with digits when reading
     # dark text on a bright amber background.
-    # '8' → '0': ED uses slashed zeros (Ø-style) that Tesseract reads as 8.
-    _DIST_CHAR_SUB = str.maketrans('SOoIlgBs8', '500119890')
+    # Note: '8' → '0' was removed — it destroyed real '8' digits (e.g. 16.8, 18.8).
+    # Slashed zeros (Ø) are read correctly as '0' by Tesseract without any help.
+    _DIST_CHAR_SUB = str.maketrans('SOoIlgBs', '50011989')
 
     def read_max_distance(self, deskewed: np.ndarray,
                           debug_prefix: str = None) -> float | None:
@@ -444,6 +445,71 @@ class NavPanelOCR:
         m = re.search(r'(\d{1,4}[.]\d)', raw_clean)
         if m:
             return float(m.group(1))
+        return None
+
+    def read_last_normal_distance(self, deskewed: np.ndarray,
+                                  debug_prefix: str | None = None) -> float | None:
+        """
+        Read the distance of the LAST (unselected) entry when the second-to-last
+        entry is highlighted.
+
+        After navigating to entry N-1 (one UP press from entry N), entry N appears
+        as the last visible row with its normal orange-on-dark appearance.
+        Uses standard THRESH_BINARY OCR — same reliable path as all other entries.
+
+        Returns the distance as a float, or None if not found (e.g. N=1).
+        """
+        import re
+
+        found, hl_top, hl_bottom = self._find_highlighted_entry(deskewed)
+        if not found:
+            return None
+
+        row_h = max(1, hl_bottom - hl_top)
+        pad = int(8 * (self.screen_h / config.EXPECTED_SCREEN_HEIGHT))
+        last_top = max(0, hl_bottom - pad)
+        last_bot = min(self.list_bottom, hl_bottom + row_h)
+
+        if last_top >= last_bot:
+            return None  # N=1: no row below the only highlighted entry
+
+        dist_crop = deskewed[last_top:last_bot, self.dist_col_left:self.dist_col_right]
+        if dist_crop.size == 0:
+            return None
+
+        h, w = dist_crop.shape[:2]
+        up = cv2.resize(dist_crop, (w * config.OCR_UPSCALE_FACTOR,
+                                    h * config.OCR_UPSCALE_FACTOR),
+                        interpolation=cv2.INTER_CUBIC)
+        gray = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
+        # OTSU picks the best threshold for the bimodal dark-bg / orange-text histogram,
+        # instead of a fixed value that can fragment characters when brightness varies.
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+
+        if config.SAVE_DEBUG_IMAGES and debug_prefix:
+            cv2.imwrite(os.path.join(config.DEBUG_DIR, f"{debug_prefix}_dist_crop.png"), dist_crop)
+            Image.fromarray(binary).save(
+                os.path.join(config.DEBUG_DIR, f"{debug_prefix}_dist_bin.png"))
+
+        raw = pytesseract.image_to_string(
+            Image.fromarray(binary),
+            config='--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789.,')
+
+        raw_clean = raw.strip().replace(' ', '')
+        raw_clean = re.sub(r'\.{2,}', '.', raw_clean)
+
+        m = re.search(r'(\d{1,4}[.,]\d)', raw_clean)
+        if m:
+            val = float(m.group(0).replace(',', '.'))
+            if val <= 20.5:
+                return val
+            # Nav panel never shows systems beyond 20 ly — value is invalid.
+            # Slashed zero (Ø) misread as '8' is the typical cause (e.g. 20.8 → 20.0).
+            # Try replacing all '8's with '0' and re-evaluate.
+            corrected = float(m.group(0).replace(',', '.').replace('8', '0'))
+            if corrected <= 20.5:
+                return corrected
+            # Still out of range (e.g. 4x.x from top-clipped '1') → fall through to fallback.
         return None
 
     def scan_end(self, screenshot_path: str, debug_prefix: str = None) -> dict:
@@ -542,11 +608,22 @@ class NavPanelOCR:
         # by pressing UP once from entry 1 — the list wraps to the last
         # entry regardless of how many entries there are.
         if not found_hl or scrollbar['peak_val'] < 10:
+            # Press UP twice: entry N → entry N-1 selected, entry N unselected at bottom.
+            pydirectinput.press(config.SCROLL_KEY_UP)
+            time.sleep(config.SCROLL_SETTLE_DELAY)
             pydirectinput.press(config.SCROLL_KEY_UP)
             time.sleep(config.SCROLL_SETTLE_DELAY)
             end_deskewed, _ = self._capture_panel()
-            max_dist = self.read_max_distance(
+            max_dist = self.read_last_normal_distance(
                 end_deskewed, debug_prefix and f"{debug_prefix}_end")
+            # Navigate forward to entry N for the confirmation prompt.
+            pydirectinput.press(config.SCROLL_KEY)
+            time.sleep(config.SCROLL_SETTLE_DELAY)
+            if max_dist is None:
+                # Fallback: N=1 (or normal-path OCR failed).
+                # Read from entry N now highlighted — fresh screenshot, correct entry.
+                n_deskewed, _ = self._capture_panel()
+                max_dist = self.read_max_distance(n_deskewed)
             return {
                 'visible_count':   visible_count,
                 'total_count':     visible_count,
@@ -562,7 +639,7 @@ class NavPanelOCR:
             time.sleep(config.SCROLL_PRESS_DELAY)
 
         time.sleep(config.SCROLL_SETTLE_DELAY)
-        prev_deskewed, _ = self._capture_panel()
+        self._capture_panel()
 
         # ── Bulk phase: jump most of the remaining distance without screenshots ──
         # Geometrically: thumb_h / track_h ≈ visible_count / total_count.
@@ -585,7 +662,7 @@ class NavPanelOCR:
                 pydirectinput.press(config.SCROLL_KEY)
                 time.sleep(config.SCROLL_PRESS_DELAY)
             time.sleep(config.SCROLL_SETTLE_DELAY)
-            prev_deskewed, _ = self._capture_panel()
+            self._capture_panel()
 
         # ── Phase 2: scroll one entry at a time, detect wrap ─────────────
         presses = visible_count - 1 + bulk_presses
@@ -600,20 +677,31 @@ class NavPanelOCR:
 
             if found and abs(hl_top - hl_top_init) < WRAP_TOL:
                 # List wrapped back to entry 1.
-                # prev_deskewed is the frame BEFORE this press → entry N selected.
                 break
 
-            prev_deskewed = curr_deskewed
-
         total_count = presses   # one full cycle = total entries
-        max_dist    = self.read_max_distance(
-            prev_deskewed,
-            debug_prefix and f"{debug_prefix}_end")
 
-        # Navigate back to the last entry so it is visible in ED during
-        # the confirmation prompt.  One UP press from entry 1 wraps to entry N.
+        # Navigate to entry N-1 so entry N appears as an unselected (normal) row.
+        # Reading orange-on-dark is more reliable than dark-on-amber (BINARY_INV).
+        # UP from entry 1 → entry N; UP again → entry N-1; entry N is last unselected.
         pydirectinput.press(config.SCROLL_KEY_UP)
         time.sleep(config.SCROLL_SETTLE_DELAY)
+        pydirectinput.press(config.SCROLL_KEY_UP)
+        time.sleep(config.SCROLL_SETTLE_DELAY)
+        end_deskewed, _ = self._capture_panel()
+        max_dist = self.read_last_normal_distance(
+            end_deskewed,
+            debug_prefix and f"{debug_prefix}_end")
+
+        # Leave selection on entry N for the confirmation prompt.
+        pydirectinput.press(config.SCROLL_KEY)
+        time.sleep(config.SCROLL_SETTLE_DELAY)
+
+        if max_dist is None:
+            # Fallback: normal-path OCR failed (or N=1).
+            # Read from entry N now highlighted — fresh screenshot, correct entry.
+            n_deskewed, _ = self._capture_panel()
+            max_dist = self.read_max_distance(n_deskewed)
 
         return {
             'visible_count':   visible_count,

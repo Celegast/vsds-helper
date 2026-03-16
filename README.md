@@ -163,7 +163,11 @@ F9 triggers a sequence:
    `BULK_SAFETY` (8) entries before the estimated end
 4. **Phase 2** — press `s` once per step, screenshot, check where the highlighted entry is.
    When it returns to the top of the window the list has wrapped → **total = press count**
-5. The frame immediately before the wrap has the last entry highlighted → read **max distance** from it
+5. **Max distance** — press `w` twice (→ entry N, → entry N−1), screenshot: entry N appears
+   as a normal unselected row (orange-on-dark) below the highlight.  OCR its distance column
+   with OTSU thresholding.  A domain sanity check rejects values > 20 ly (the nav panel
+   maximum); slashed-zero (Ø→8) artefacts in that range are corrected automatically.
+   Falls back to reading the amber-highlighted entry N if the normal path returns nothing.
 6. **Confirmation prompt** — review and optionally correct `total_count` and `max_distance_ly`
    before anything is written to disk
 
@@ -189,8 +193,9 @@ Full screenshot (5120×1440)
        │         └─ HSV orange detection → thumb height → bulk estimate
        └─ Deskew  (rotate –4.5° to correct cockpit tilt)
             ├─ Detect highlighted entry  (amber background → row mean > 90)
-            │    ├─ OCR with THRESH_BINARY_INV (dark text on amber bg)
-            │    └─ Read distance column [820–990]  (max distance)
+            │    └─ OCR with THRESH_BINARY_INV (dark text on amber bg)
+            ├─ Read distance of row below highlight [820–990]  (OTSU, orange-on-dark)
+            │    └─ Fallback: read highlighted entry with THRESH_BINARY_INV if above fails
             └─ OCR list area [70–800]  (PSM 6, THRESH_BINARY)
 ```
 
