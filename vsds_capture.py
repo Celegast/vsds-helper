@@ -363,6 +363,25 @@ def main():
         print(f"  Full results : {scan_path}")
         print(f"  Excel paste  : {paste_path}")
 
+        if len(scans) >= 2:
+            xs     = [s['x'] for s in scans]
+            ys     = [s['y'] for s in scans]
+            zs     = [s['z'] for s in scans]
+            mean_x = sum(xs) / len(xs)
+            mean_z = sum(zs) / len(zs)
+            max_dx = max(abs(x - mean_x) for x in xs)
+            max_dz = max(abs(z - mean_z) for z in zs)
+            y_span = max(ys) - min(ys)
+            if y_span > 0:
+                score = max(0.0, 100.0 * (1.0 - (2.0 * max_dz + max_dx) / y_span))
+            else:
+                score = 100.0
+            print()
+            print(f"  Column straightness  (Y span {y_span:.1f} ly):")
+            print(f"    X max deviation : {max_dx:.2f} ly  (weight ×1)")
+            print(f"    Z max deviation : {max_dz:.2f} ly  (weight ×2)")
+            print(f"    Score           : {score:.1f} / 100")
+
     print("\n  o7  Fly safe, Commander.")
 
 
