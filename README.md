@@ -102,35 +102,30 @@ After each scan the tool prompts:
 
 ### Excel paste file (`output/vsds_paste.tsv`)
 
-The file is rewritten after every confirmed scan.  It contains four labelled
-blocks — one per group of adjacent non-formula columns in the VSDS spreadsheet:
+The file is rewritten after every confirmed scan.  It contains a single table
+with all nine spreadsheet columns pre-calculated, sorted by galactic height:
 
 ```
-=== 1. Paste into: System (col A) ===
-System
-Preae Chroa OX-L c7-65
-...
-
-=== 2. Paste into: System Count (col C) ===
-System Count
-49
-...
-
-=== 3. Paste into: Max Distance (col E) ===
-Max Distance
-13.6
-...
-
-=== 4. Paste into: X (col G) — fills X, Z, Y ===
-X	Z	Y
-5403.34	0.09	49207.97
+System	Z Sample	System Count	Corrected n	Max Distance	Rho	X	Z	Y
+Preae Chroa OX-L c7-65	50	49	50	19.9	0.00151	5403.34	49207.97	0.09
 ...
 ```
 
-Paste each block separately into the corresponding column.  Formula columns
-(`Z Sample`, `Corrected n`, `Rho`) are never included, so their formulas are preserved.
+Paste the whole table (including the header row) into column A.  All columns
+are filled — formula columns (`Z Sample`, `Corrected n`, `Rho`) are
+pre-calculated so you can paste over any existing formulas without loss.
 
-**Coordinate mapping:** spreadsheet X = ED x · spreadsheet Z = ED y (galactic height) · spreadsheet Y = ED z
+| Column | Source |
+|--------|--------|
+| System | Star system name from journal |
+| Z Sample | `y` snapped to nearest scan step (linear 0–1000 in 50 ly steps, or logarithmic ±250) |
+| System Count | Confirmed total entry count |
+| Corrected n | System Count + 1 |
+| Max Distance | OCR'd distance to furthest system (ly) |
+| Rho | `corrected_n / ((4π/3)·r³)` where r = max_dist if n ≥ 50, else 20 ly |
+| X | ED x coordinate |
+| Z | ED y coordinate (galactic height) |
+| Y | ED z coordinate |
 
 ### Output columns (vsds_scans.csv)
 

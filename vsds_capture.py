@@ -18,6 +18,7 @@ Press ESC to quit and see the session summary.
 """
 
 import csv
+import math
 import os
 import threading
 import time
@@ -31,16 +32,62 @@ from nav_panel_ocr import NavPanelOCR
 
 # ─── Output file paths ────────────────────────────────────────────────────────
 
-# Tab-separated paste file — column order matches the VSDS spreadsheet.
+# Single-table TSV — one row per scan, columns match the VSDS spreadsheet exactly.
+# Spreadsheet layout:
+#   System | Z Sample | System Count | Corrected n | Max Distance | Rho | X | Z | Y
 # Coordinate mapping:  spreadsheet X = ED x
 #                      spreadsheet Z = ED y  (galactic height)
 #                      spreadsheet Y = ED z
-# Paste file — four separate blocks, one per group of adjacent non-formula columns.
-# Spreadsheet layout:
-#   System | Z Sample* | System Count | Corrected n* | Max Distance | Rho* | X | Z | Y
-#   (* = formula column — never overwrite)
-# Each block has its own header so pasting into the correct column is self-evident.
+# Formula columns (Z Sample, Corrected n, Rho) are pre-calculated here so the
+# whole table can be pasted in one go starting at column A.
 PASTE_FILE = 'vsds_paste.tsv'
+
+# ─── Paste-table helpers ───────────────────────────────────────────────────────
+
+# Defined scan-step sequences.
+_LOG_STEPS    = [-250, -200, -150, -100, -80, -70, -60, -50, -40, -30, -20, -10,
+                    0,   10,   20,   30,  40,  50,  60,  70,  80, 100, 150, 200, 250]
+_LINEAR_STEPS = list(range(0, 1001, 50))
+
+
+def _z_sample(y: float) -> int:
+    """Snap galactic height y to the nearest defined scan step.
+
+    Auto-detects scan type:
+      Y <= 250  → logarithmic scan  (snap to log steps)
+      Y >  250  → linear 0–1000 scan (snap to linear steps; higher step wins ties
+                  because 250 appears in both lists and we want 300 for y=275)
+    """
+    if y > _LOG_STEPS[-1]:   # > 250: beyond log range, must be linear
+        return min(_LINEAR_STEPS, key=lambda s: (abs(s - y), -s))
+    return min(_LOG_STEPS, key=lambda s: abs(s - y))
+
+
+def _rho(corrected_n: int, max_dist) -> str:
+    """
+    Stellar density:  count / sphere_volume
+      corrected_n == 50  →  sphere bounded by max_dist  (list at capacity)
+      corrected_n  < 50  →  fixed 20 ly sphere
+      corrected_n  > 50  →  sphere bounded by max_dist
+    Returns a formatted string, or '' if inputs are invalid.
+    """
+    if max_dist == '' or max_dist is None:
+        return ''
+    try:
+        md = float(max_dist)
+        n  = int(corrected_n)
+    except (TypeError, ValueError):
+        return ''
+    vol_20 = (4 * math.pi / 3) * 20.0 ** 3
+    if n < 50:
+        return f"{n / vol_20:.6g}"
+    else:   # n == 50 or n > 50
+        vol = (4 * math.pi / 3) * md ** 3
+        return f"{n / vol:.6g}"
+
+
+PASTE_HEADER = ['System', 'Z Sample', 'System Count', 'Corrected n',
+                'Max Distance', 'Rho', 'X', 'Z', 'Y']
 
 # ─── CSV helpers ──────────────────────────────────────────────────────────────
 
@@ -75,35 +122,26 @@ def _init_paste_tsv(path: str):
         open(path, 'w').close()   # create empty file
 
 
-def _write_paste_blocks(f, scans: list):
-    """Write (or overwrite) the four paste blocks for all scans so far."""
-    ordered = sorted(scans, key=lambda s: s['y'])   # ascending galactic height
-    scans = ordered
-    f.write('=== 1. Paste into: System (col A) ===\n')
-    for s in scans:
-        f.write(f"{s['star_system']}\n")
-    f.write('\n')
-
-    f.write('=== 2. Paste into: System Count (col C) ===\n')
-    for s in scans:
-        f.write(f"{s['total_count']}\n")
-    f.write('\n')
-
-    f.write('=== 3. Paste into: Max Distance (col E) ===\n')
-    for s in scans:
-        md = s['max_distance_ly'] if s['max_distance_ly'] != '' else ''
-        f.write(f"{md}\n")
-    f.write('\n')
-
-    f.write('=== 4. Paste into: X (col G) — fills X, Z, Y ===\n')
-    for s in scans:
-        f.write(f"{s['x']}\t{s['y']}\t{s['z']}\n")
-
-
 def _rewrite_paste_tsv(path: str, scans: list):
-    """Rewrite the entire paste file from the current scans list."""
+    """Rewrite the paste file as a single table sorted by galactic height."""
+    ordered = sorted(scans, key=lambda s: s['y'])
     with open(path, 'w', encoding='utf-8') as f:
-        _write_paste_blocks(f, scans)
+        f.write('\t'.join(PASTE_HEADER) + '\n')
+        for s in ordered:
+            corrected_n = s['total_count'] + 1
+            md = s['max_distance_ly'] if s['max_distance_ly'] != '' else ''
+            row = [
+                s['star_system'],
+                _z_sample(s['y']),
+                s['total_count'],
+                corrected_n,
+                md,
+                _rho(corrected_n, md),
+                s['x'],
+                s['y'],   # spreadsheet Z = ED y (galactic height)
+                s['z'],   # spreadsheet Y = ED z
+            ]
+            f.write('\t'.join(str(v) for v in row) + '\n')
 
 
 # ─── Audio ────────────────────────────────────────────────────────────────────
