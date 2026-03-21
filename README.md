@@ -1,6 +1,6 @@
 # VSDS Helper — Elite Dangerous Vertical Stellar Density Scanner
 
-A Python tool for automating **Vertical Stellar Density Scans (VSDS)** in Elite Dangerous.
+A Python tool that assists **Vertical Stellar Density Scanning (VSDS)** in Elite Dangerous by automating the nav panel scroll-and-count and recording galactic position.
 
 ## Disclaimer
 
