@@ -244,7 +244,7 @@ Edit `config.py` to change:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `JOURNAL_DIR` | `C:\Users\celeg\Saved Games\...` | Path to ED journal folder |
+| `JOURNAL_DIR` | `C:\Users\%USERNAME%\Saved Games\...` | Path to ED journal folder |
 | `CAPTURE_HOTKEY` | `f9` | Scan trigger key |
 | `QUIT_HOTKEY` | `esc` | Exit key |
 | `SCROLL_KEY` | `s` | Key that moves nav panel selection down |

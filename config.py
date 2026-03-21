@@ -3,9 +3,11 @@ Configuration for VSDS Helper
 Elite Dangerous Vertical Stellar Density Scanner
 """
 
+import os
+
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
-JOURNAL_DIR = r"C:\Users\celeg\Saved Games\Frontier Developments\Elite Dangerous"
+JOURNAL_DIR = os.path.join(os.path.expanduser('~'), 'Saved Games', 'Frontier Developments', 'Elite Dangerous')
 SCREENSHOTS_DIR = "screenshots"
 OUTPUT_DIR = "output"
 DEBUG_DIR = "debug"
