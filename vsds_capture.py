@@ -80,10 +80,10 @@ def _rho(corrected_n: int, max_dist) -> str:
         return ''
     vol_20 = (4 * math.pi / 3) * 20.0 ** 3
     if n < 50:
-        return f"{n / vol_20:.6g}"
+        return f"{n / vol_20:.16f}"
     else:   # n == 50 or n > 50
         vol = (4 * math.pi / 3) * md ** 3
-        return f"{n / vol:.6g}"
+        return f"{n / vol:.16f}"
 
 
 PASTE_HEADER = ['System', 'Z Sample', 'System Count', 'Corrected n',
