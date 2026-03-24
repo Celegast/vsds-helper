@@ -17,6 +17,7 @@ SCROLLBAR_SAMPLES_FILE = "output/scrollbar_samples.csv"
 # ─── Hotkeys ──────────────────────────────────────────────────────────────────
 
 CAPTURE_HOTKEY = 'f9'    # triggers the full automated scan
+EMPTY_HOTKEY   = 'e'     # records an empty altitude (no stars within 20 ly)
 QUIT_HOTKEY    = 'esc'
 
 # ─── Auto-scroll ───────────────────────────────────────────────────────────────

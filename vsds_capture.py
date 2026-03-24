@@ -132,19 +132,30 @@ def _rewrite_paste_tsv(path: str, scans: list):
     with open(path, 'w', encoding='utf-8') as f:
         f.write('\t'.join(PASTE_HEADER) + '\n')
         for s in ordered:
-            corrected_n = s['total_count'] + 1
-            md = s['max_distance_ly'] if s['max_distance_ly'] != '' else ''
-            row = [
-                s['star_system'],
-                _z_sample(s['y']),
-                s['total_count'],
-                corrected_n,
-                md,
-                _rho(corrected_n, md),
-                s['x'],
-                s['y'],   # spreadsheet Z = ED y (galactic height)
-                s['z'],   # spreadsheet Y = ED z
-            ]
+            if s.get('_empty'):
+                row = [
+                    '',
+                    _z_sample(s['y']),
+                    '',
+                    0,
+                    '',
+                    _rho(0, None),
+                    '', '', '',
+                ]
+            else:
+                corrected_n = s['total_count'] + 1
+                md = s['max_distance_ly'] if s['max_distance_ly'] != '' else ''
+                row = [
+                    s['star_system'],
+                    _z_sample(s['y']),
+                    s['total_count'],
+                    corrected_n,
+                    md,
+                    _rho(corrected_n, md),
+                    s['x'],
+                    s['y'],   # spreadsheet Z = ED y (galactic height)
+                    s['z'],   # spreadsheet Y = ED z
+                ]
             f.write('\t'.join(str(v) for v in row) + '\n')
 
 
@@ -208,7 +219,8 @@ def main():
     print("  and record the distance to the furthest system.")
     print()
     print("=" * 70)
-    print(f"  Ready — press {config.CAPTURE_HOTKEY.upper()} ...")
+    print(f"  Ready — press {config.CAPTURE_HOTKEY.upper()} to scan  |  "
+          f"{config.EMPTY_HOTKEY.upper()} for empty altitude  |  ESC to quit")
     print("=" * 70)
 
     os.makedirs(config.OUTPUT_DIR,    exist_ok=True)
@@ -344,7 +356,75 @@ def main():
         finally:
             _scan_lock.release()
 
+    def on_empty():
+        nonlocal idx
+
+        if not _scan_lock.acquire(blocking=False):
+            print("\n  [!] Still confirming previous scan — finish that first.")
+            return
+
+        try:
+            idx += 1
+            ts = time.strftime('%H:%M:%S')
+            print(f"\n[{ts}] Empty altitude #{idx}")
+
+            # Use journal position as default if available
+            pos = get_current_position(config.JOURNAL_DIR)
+            default_y = f"{pos['y']:.2f}" if pos else ''
+
+            try:
+                raw = input(f"  Galactic height (ly) [{default_y}]: ").strip()
+            except EOFError:
+                raw = ''
+
+            if raw:
+                try:
+                    y = float(raw.replace(',', '.'))
+                except ValueError:
+                    print("  (invalid — cancelled)")
+                    return
+            elif default_y:
+                y = pos['y']
+            else:
+                print("  (no height entered — cancelled)")
+                return
+
+            scan_row = {
+                'capture_time':      time.strftime('%Y-%m-%dT%H:%M:%S'),
+                'journal_timestamp': pos['timestamp'] if pos else '',
+                'star_system':       '',
+                'x':                 round(pos['x'], 5) if pos else '',
+                'y':                 round(y, 5),
+                'z':                 round(pos['z'], 5) if pos else '',
+                'visible_count':     0,
+                'total_count':       0,
+                'system_names':      '',
+                'max_distance_ly':   '',
+                'sb_bright_sum':     '',
+                'sb_peak_val':       '',
+                'sb_peak_row':       '',
+                '_empty':            True,
+            }
+
+            print(f"  Z Sample: {_z_sample(y)}  Y: {y:.2f} ly")
+            _append_csv(scan_path, SCAN_HEADER,
+                        {k: v for k, v in scan_row.items() if k in set(SCAN_HEADER)})
+            scans.append(scan_row)
+            _rewrite_paste_tsv(paste_path, scans)
+
+            print(f"  [OK] Empty altitude #{idx} saved.")
+            _beep_done()
+
+        except Exception as e:
+            print(f"  [X] Error: {e}")
+            import traceback; traceback.print_exc()
+            _beep_err()
+
+        finally:
+            _scan_lock.release()
+
     keyboard.add_hotkey(config.CAPTURE_HOTKEY, on_capture)
+    keyboard.add_hotkey(config.EMPTY_HOTKEY,   on_empty)
     try:
         keyboard.wait(config.QUIT_HOTKEY)
     except KeyboardInterrupt:
