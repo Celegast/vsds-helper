@@ -71,19 +71,23 @@ def _rho(corrected_n: int, max_dist) -> str:
       corrected_n  > 50  →  sphere bounded by max_dist
     Returns a formatted string, or '' if inputs are invalid.
     """
-    if max_dist == '' or max_dist is None:
-        return ''
     try:
-        md = float(max_dist)
-        n  = int(corrected_n)
+        n = int(corrected_n)
     except (TypeError, ValueError):
         return ''
     vol_20 = (4 * math.pi / 3) * 20.0 ** 3
     if n < 50:
+        # Fixed 20 ly sphere — max_dist not needed
         return f"{n / vol_20:.16f}"
-    else:   # n == 50 or n > 50
-        vol = (4 * math.pi / 3) * md ** 3
-        return f"{n / vol:.16f}"
+    # n >= 50: sphere radius = max_dist
+    if max_dist == '' or max_dist is None:
+        return ''
+    try:
+        md = float(max_dist)
+    except (TypeError, ValueError):
+        return ''
+    vol = (4 * math.pi / 3) * md ** 3
+    return f"{n / vol:.16f}"
 
 
 PASTE_HEADER = ['System', 'Z Sample', 'System Count', 'Corrected n',
